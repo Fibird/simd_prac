@@ -3,8 +3,6 @@
 #include <stdio.h>
 #include "Rdtsc.h"              /* startTimer, stopTimer */
 #include <sys/time.h>           /* gettimeofday */
-//#include "x86intrin.h"              /* startTimer, stopTimer */
-#include <immintrin.h>
 
 #define L1 (1<<15)    /* Working set size for L1 cache 32KB */
 #define L2 (1<<18)    /* Working set size for L2 cache 256KB */
@@ -14,8 +12,8 @@
 #define MAXELEMS 6000 
 #define random(x) (rand()%x)
 void init_data(int *data, int n, int cardinality);
-void test(int *data, int *vector, int n,int vec_len);
-long run(int *data, int *vector, int n,int vec_len);
+void test(int *data, int *vector, int n);
+long run(int *data, int *vector, int n);
 /* $begin mountainmain */
 int main()
 {
@@ -34,7 +32,7 @@ int main()
 		int * vector=(int *)malloc(sizeof(int) * vector_len);   /* Initialize primary key vector elements in vector */
 		for (i=0;i<vector_len;i++)
 			vector[i]=1;
-		printf("%ld\t", run(data,vector,MAXELEMS, vector_len));
+		printf("%ld\t", run(data,vector,MAXELEMS));
 	}
 	printf("\n");
 	/*vector join for L2 cache sets*/
@@ -45,7 +43,7 @@ int main()
 		int * vector=(int *)malloc(sizeof(int) * vector_len);   /* Initialize primary key vector elements in vector */
 		for (i=0;i<vector_len;i++)
 			vector[i]=1;
-		printf("%ld\t", run(data,vector,MAXELEMS, vector_len));
+		printf("%ld\t", run(data,vector,MAXELEMS));
 	}
 	printf("\n");
 	/*vector join for L3 cache sets*/
@@ -56,7 +54,7 @@ int main()
 		int * vector=(int *)malloc(sizeof(int) * vector_len);   /* Initialize primary key vector elements in vector */
 		for (i=0;i<vector_len;i++)
 			vector[i]=1;
-		printf("%ld\t", run(data,vector,MAXELEMS,vector_len));
+		printf("%ld\t", run(data,vector,MAXELEMS));
 	}
 	printf("\n");
 	/*vector join for LLC cache sets*/
@@ -67,7 +65,7 @@ int main()
 		int * vector=(int *)malloc(sizeof(int) * vector_len);   /* Initialize primary key vector elements in vector */
 		for (i=0;i<vector_len;i++)
 			vector[i]=1;
-		printf("%ld\t", run(data,vector,MAXELEMS,vector_len));
+		printf("%ld\t", run(data,vector,MAXELEMS));
 	}
 	printf("\n");
     exit(0);
@@ -79,55 +77,42 @@ void init_data(int *data, int n, int cardinality)
     for (i = 0; i < n; i++)
 		data[i] = random(cardinality);
 }
-void test(int *data, int *vector, int n, int vec_len) /* The test function */
+void nlj_test(int *data, int *vector, int n) /* The test function */
 {
-    int i, j, k, s;
+    int i, j;
     int result = 0; 
     volatile int sink=0; 
-	size_t nBlockWidth = 32.0 / (sizeof(float));
-	size_t cntBlock = n / (nBlockWidth);
-	size_t cntRem = n % (nBlockWidth);
-
-	printf("n=%d, vec_len=%d, cntBlock=%d, cntRem=%d\n", n, vec_len, cntBlock, cntRem);
-
-	int *p1 = (int*)malloc(nBlockWidth * sizeof(int));	
-	int *p2 = data;
-	
-    int *q = (int*)malloc(nBlockWidth * sizeof(int));    //将AVX变量上的多个数值合并时所用指针.
-	__m256 outVecs, innerVecs;
-	__m256 cmpRst;	
-	for (i = 0; i < vec_len; i++) {
-		for (k = 0; k < nBlockWidth; k++) {
-			p1[k] = i;
-		}	
-		outVecs = _mm256_loadu_ps((float*)p1);	
-		
-		for (j = 0; j < cntBlock; j++) {
-			innerVecs = _mm256_loadu_ps((float*)p2);
-			cmpRst = _mm256_cmp_ps(outVecs, innerVecs, _CMP_EQ_OQ);
-			_mm256_storeu_ps((float*)q, cmpRst);
-            result += q[0] + q[1] + q[2] + q[3] + q[4] + q[5] + q[6] + q[7];
-			p2 += nBlockWidth;
-		}			
-		for (s = 0; s < cntRem; s++) {
-			if (i == *p2)
-				result++;
-			p2++;
+    for (i = 0; i < n; i++) {
+	for (j = 0; j < n; j++) {
+		if (i == data[j])
+		{
+			result++;
 		}
-		printf("End to: i=%d\n", i);
 	}
-	
+    }
     sink = result; /* So compiler doesn't optimize away the loop */
 //	printf("[%ld]",sink);
 }
 
-long run(int *data, int *vector, int n, int vec_len)
+void test(int *data, int *vector, int n) /* The test function */
+{
+    int i;
+    int result = 0; 
+    volatile int sink=0; 
+	for (i = 0; i < n; i++) {
+		if(vector[data[i]]==1)  /*foreign key referenced vector position*/
+			result++;
+    }
+    sink = result; /* So compiler doesn't optimize away the loop */
+//	printf("[%ld]",sink);
+}
+long run(int *data, int *vector, int n)
 {   
     long cycles;
 	uint64_t timer;
-    test(data, vector,n,vec_len);                     /* warm up the cache */       //line:mem:warmup
+    test(data, vector,n);                     /* warm up the cache */       //line:mem:warmup
 	startTimer(&timer);
-    test(data, vector,n,vec_len);                     /* test for cache locality */    
+    test(data, vector,n);                     /* test for cache locality */    
 	stopTimer(&timer); 
     cycles = timer;  
     return cycles; 
