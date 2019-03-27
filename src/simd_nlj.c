@@ -106,7 +106,7 @@ void test(int *data, int *vector, int n, int vec_len) /* The test function */
 			innerVecs = _mm256_loadu_ps((float*)p2);
 			cmpRst = _mm256_cmp_ps(outVecs, innerVecs, _CMP_EQ_OQ);
 			_mm256_storeu_ps((float*)q, cmpRst);
-            result += q[0] + q[1] + q[2] + q[3] + q[4] + q[5] + q[6] + q[7];
+            result += -(int)q[0] + -(int)q[1] + -(int)q[2] + -(int)q[3] + -(int)q[4] + -(int)q[5] + -(int)q[6] + -(int)q[7];
 			p2 += nBlockWidth;
 		}			
 		for (s = 0; s < cntRem; s++) {
@@ -114,7 +114,6 @@ void test(int *data, int *vector, int n, int vec_len) /* The test function */
 				result++;
 			p2++;
 		}
-		//printf("End to: i=%d\n", i);
 	}
 	
     sink = result; /* So compiler doesn't optimize away the loop */
