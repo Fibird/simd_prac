@@ -104,7 +104,7 @@ void test(int *data, int *vector, int n) /* The test function */
 			result++;
     }
     sink = result; /* So compiler doesn't optimize away the loop */
-	printf("[%ld]",sink);
+	//printf("[%ld]",sink);
 }
 long run(int *data, int *vector, int n)
 {   
