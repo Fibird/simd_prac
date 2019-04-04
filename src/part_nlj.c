@@ -78,73 +78,31 @@ void init_data(int *data, int n, int cardinality)
     for (i = 0; i < n; i++)
 	data[i] = random(cardinality);
 }
-
 void test(int *data, int *vector, int n, int vec_len) /* The test function */
 {
     int i, j, k, s;
     int result = 0; 
     volatile int sink=0; 
-    size_t nBlockWidth = 32 / (sizeof(float));
-    size_t cntBlock = n / (nBlockWidth * 4);
-    size_t cntRem = n % (nBlockWidth * 4);
 
-    //printf("n=%d, vec_len=%d, cntBlock=%d, cntRem=%d\n", n, vec_len, cntBlock, cntRem);
+    int partBlock = L1 / (2 * sizeof(int));
+    int blockNum = vec_len / partBlock;
+    int remNum = vec_len % partBlock;
 
-    int *p1 = (int*)malloc(nBlockWidth * sizeof(int));	
-    int *p2 = data;
-	
-    int *q = (int*)malloc(nBlockWidth * sizeof(int));    //将AVX变量上的多个数值合并时所用指针.
-    __m256 outVecs, outVecs1, outVecs2, outVecs3; 
-    __m256 innerVecs, innerVecs1, innerVecs2, innerVecs3;
-    // set rst to zero
-    __m256 cmpRst;	
-
-    for (i = 0; i < vec_len; i++) {
-        if (n < nBlockWidth) {
+    for (k = 0; k < blockNum; k++) {
+        for (i = 0; i < partBlock ; i++) {
             for (j = 0; j < n; j++) {
-                if (i == data[n]) {
-                    result++;
-                }
+                if (data[n] == i + k * blockNum) result++;
             }
-        } else {
-        for (k = 0; k < nBlockWidth; k++) {
-	    p1[k] = i;
-        }	
-        outVecs = _mm256_loadu_ps((float*)p1);	
-        p2 = data;
-        for (j = 0; j < cntBlock; j++) {
-            innerVecs = _mm256_loadu_ps((float*)p2);
-	    innerVecs1 = _mm256_loadu_ps((float*)p2 + nBlockWidth);
-	    innerVecs2 = _mm256_loadu_ps((float*)p2 + nBlockWidth * 2);
-	    innerVecs3 = _mm256_loadu_ps((float*)p2 + nBlockWidth * 3);
-
-	    cmpRst = _mm256_cmp_ps(outVecs, innerVecs, _CMP_EQ_OQ);
-	    _mm256_storeu_ps((float*)q, cmpRst);
-            result += -(int)q[0] + -(int)q[1] + -(int)q[2] + -(int)q[3] + -(int)q[4] + -(int)q[5] + -(int)q[6] + -(int)q[7];
-		
-	    cmpRst = _mm256_cmp_ps(outVecs, innerVecs1, _CMP_EQ_OQ);
-	    _mm256_storeu_ps((float*)q, cmpRst);
-            result += -(int)q[0] + -(int)q[1] + -(int)q[2] + -(int)q[3] + -(int)q[4] + -(int)q[5] + -(int)q[6] + -(int)q[7];
-
-	    cmpRst = _mm256_cmp_ps(outVecs, innerVecs2, _CMP_EQ_OQ);
-	    _mm256_storeu_ps((float*)q, cmpRst);
-            result += -(int)q[0] + -(int)q[1] + -(int)q[2] + -(int)q[3] + -(int)q[4] + -(int)q[5] + -(int)q[6] + -(int)q[7];
-
-	    cmpRst = _mm256_cmp_ps(outVecs, innerVecs3, _CMP_EQ_OQ);
-	    _mm256_storeu_ps((float*)q, cmpRst);
-            result += -(int)q[0] + -(int)q[1] + -(int)q[2] + -(int)q[3] + -(int)q[4] + -(int)q[5] + -(int)q[6] + -(int)q[7];
-	    p2 += nBlockWidth * 4;
-        }			
-        for (s = 0; s < cntRem; s++) {
-            if (i == *p2)
-	        result++;
-	    p2++;
-        }
         }
     }
-	
+
+    for (i = 0; i < remNum; i++) {
+        for (j = 0; j < n; j++) {
+            if (data[n] == i + k * blockNum) result++;
+        }
+    }
     sink = result; /* So compiler doesn't optimize away the loop */
-    //printf("[%ld]",sink);
+//  printf("[%ld]",sink);
 }
 
 long run(int *data, int *vector, int n, int vec_len)
