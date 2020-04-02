@@ -89,16 +89,18 @@ void test(int *data, int *vector, int n, int vec_len) /* The test function */
     int remNum = vec_len % partBlock;
 
     for (k = 0; k < blockNum; k++) {
-        for (i = 0; i < partBlock ; i++) {
-            for (j = 0; j < n; j++) {
-                if (data[n] == i + k * blockNum) result++;
+        for (j = 0; j < n; j++) {
+            for (i = 0; i < partBlock ; i++) {
+                if (data[j] == (i + k * partBlock))
+                    result++;
             }
         }
     }
 
-    for (i = 0; i < remNum; i++) {
-        for (j = 0; j < n; j++) {
-            if (data[n] == i + k * blockNum) result++;
+    for (j = 0; j < n; j++) {
+        for (i = 0; i < remNum; i++) {
+            if (data[j] == (i + k * partBlock)) 
+                result++;
         }
     }
     sink = result; /* So compiler doesn't optimize away the loop */

@@ -15,6 +15,9 @@
 void init_data(int *data, int n, int cardinality);
 void test(int *data, int *vector, int n,int vec_len);
 long run(int *data, int *vector, int n,int vec_len);
+void test_SIMD_partition(void *args); 
+int SPNLJ(int *pk, int pk_len, int *fk, int fk_len, int tnum); 
+
 /* $begin mountainmain */
 int main()
 {
@@ -79,82 +82,90 @@ void init_data(int *data, int n, int cardinality)
 	data[i] = random(cardinality);
 }
 
-void test(int *data, int *vector, int n, int vec_len) /* The test function */
-{
-    int i, j, k, s;
-    int result = 0; 
-    volatile int sink=0; 
-    size_t nBlockWidth = 32 / (sizeof(float));
-    size_t cntBlock = n / (nBlockWidth * 4);
-    size_t cntRem = n % (nBlockWidth * 4);
+typedef struct {
+    int *pk;
+    int pk_len;
+    int *fk;
+    int fk_len;
+    int result;
+} Args;
 
-    //printf("n=%d, vec_len=%d, cntBlock=%d, cntRem=%d\n", n, vec_len, cntBlock, cntRem);
-
-    int *p1 = (int*)malloc(nBlockWidth * sizeof(int));	
-    int *p2 = data;
-	
-    int *q = (int*)malloc(nBlockWidth * sizeof(int));    //将AVX变量上的多个数值合并时所用指针.
-    __m256 outVecs, outVecs1, outVecs2, outVecs3; 
-    __m256 innerVecs, innerVecs1, innerVecs2, innerVecs3;
-    // set rst to zero
-    __m256 cmpRst;	
-
-    for (i = 0; i < vec_len; i++) {
-        if (n < nBlockWidth) {
-            for (j = 0; j < n; j++) {
-                if (i == data[n]) {
-                    result++;
-                }
-            }
-        } else {
-        /*for (k = 0; k < nBlockWidth; k++) {
-	    p1[k] = i;
-        }*/	
-        outVecs = _mm256_set1_ps(*((float*)(&i)));
-        //outVecs = _mm256_loadu_ps((float*)p1);	
-        p2 = data;
-        for (j = 0; j < cntBlock; j++) {
-            innerVecs = _mm256_loadu_ps((float*)p2);
-	    innerVecs1 = _mm256_loadu_ps((float*)p2 + nBlockWidth);
-	    innerVecs2 = _mm256_loadu_ps((float*)p2 + nBlockWidth * 2);
-	    innerVecs3 = _mm256_loadu_ps((float*)p2 + nBlockWidth * 3);
-
-	    cmpRst = _mm256_cmp_ps(outVecs, innerVecs, _CMP_EQ_OQ);
-	    _mm256_storeu_ps((float*)q, cmpRst);
-            result += -(int)q[0] + -(int)q[1] + -(int)q[2] + -(int)q[3] + -(int)q[4] + -(int)q[5] + -(int)q[6] + -(int)q[7];
-		
-	    cmpRst = _mm256_cmp_ps(outVecs, innerVecs1, _CMP_EQ_OQ);
-	    _mm256_storeu_ps((float*)q, cmpRst);
-            result += -(int)q[0] + -(int)q[1] + -(int)q[2] + -(int)q[3] + -(int)q[4] + -(int)q[5] + -(int)q[6] + -(int)q[7];
-
-	    cmpRst = _mm256_cmp_ps(outVecs, innerVecs2, _CMP_EQ_OQ);
-	    _mm256_storeu_ps((float*)q, cmpRst);
-            result += -(int)q[0] + -(int)q[1] + -(int)q[2] + -(int)q[3] + -(int)q[4] + -(int)q[5] + -(int)q[6] + -(int)q[7];
-
-	    cmpRst = _mm256_cmp_ps(outVecs, innerVecs3, _CMP_EQ_OQ);
-	    _mm256_storeu_ps((float*)q, cmpRst);
-            result += -(int)q[0] + -(int)q[1] + -(int)q[2] + -(int)q[3] + -(int)q[4] + -(int)q[5] + -(int)q[6] + -(int)q[7];
-	    p2 += nBlockWidth * 4;
-        }			
-        for (s = 0; s < cntRem; s++) {
-            if (i == *p2)
-	        result++;
-	    p2++;
-        }
-        }
+int SPNLJ(int *pk, int pk_len, int *fk, int fk_len, int tnum) {
+    int part_size = (pk_len) / tnum ;
+    int remain_size = pk_len % tnum;
+    int i = 0; 
+    pthread_t tid[tnum];
+    Args args[tnum];
+    for (i = 0; i < tnum; i++) {
+        args[i].pk = i * part_size + pk;
+        args[i].pk_len = part_size;
+        args[i].fk = fk;  args[i].fk_len = fk_len;
+        args[i].result = 0;
+        if (i == (tnum - 1) && remain_size != 0) args->pk_len = remain_size;
+        pthread_create(&tid[i], NULL, test_SIMD_partition, (void*)&args[i]);
     }
-	
-    sink = result; /* So compiler doesn't optimize away the loop */
-printf("[%ld]",sink);
+
+    int result = 0;
+    for (i = 0; i < tnum; i++) {
+        pthread_join(tid[i], NULL);
+        result += args[i].result; 
+    }
+    printf("[%d]", result);
+}
+
+void test_SIMD_partition(void *args) {
+        int *pk = ((Args*)args)->pk;
+        int pk_len = ((Args*)args)->pk_len;
+        int *fk = ((Args*)args)->fk;
+        int fk_len = ((Args*)args)->fk_len;
+        ((Args*)args)->result = 0;
+
+        printf("pk len:%d\n", pk_len);
+        printf("fk len:%d\n", fk_len);
+	__m256i yidOuter;
+	__m256i yidInner;
+	__m256i yidResult = _mm256_set1_epi32(0);
+	__m256i yidTmp;
+
+	volatile int sink = 0;
+	int i, j, k;
+	int ret = 0;
+	int q[8];
+	int partition = L1/ 2 / 4;
+	void *p;
+	for (k = 0; k < pk_len; k += partition) {
+		int end = k + partition < pk_len ? k + partition : pk_len;
+		int bound = (end - k) / 8 * 8 + k;
+		for (i = 0; i < fk_len; ++i) {
+			yidOuter = _mm256_set1_epi32(fk[i]);
+			p = pk + k;
+			for (j = k; j < bound; j+= 8) {
+				yidInner = _mm256_loadu_si256(p);
+				yidTmp = _mm256_cmpeq_epi32(yidOuter, yidInner);
+				yidResult = _mm256_sub_epi32(yidResult, yidTmp);
+				p += 32;
+			}
+			for (; j < end; ++j) {
+				if (fk[i] == pk[j]) {
+					++ret;
+				}
+			}
+		}
+	}
+	_mm256_storeu_si256((void *)q, yidResult);
+	ret += q[0] + q[1] + q[2] + q[3] + q[4] + q[5] + q[6] + q[7];
+	sink = ret;
+        ((Args*)args)->result = sink;
+	//return sink;
 }
 
 long run(int *data, int *vector, int n, int vec_len)
 {   
     long cycles;
     uint64_t timer;
-    test(data, vector,n,vec_len);                     /* warm up the cache */       //line:mem:warmup
+    SPNLJ(vector,vec_len,data,n, 1);                     /* warm up the cache */       //line:mem:warmup
     startTimer(&timer);
-    test(data, vector,n,vec_len);                     /* test for cache locality */    
+    SPNLJ(vector,vec_len,data,n, 1);                     /* warm up the cache */       //line:mem:warmup
     stopTimer(&timer); 
     cycles = timer;  
     return cycles; 

@@ -103,10 +103,12 @@ void test(int *data, int *vector, int n, int vec_len) /* The test function */
 
     for (k = 0; k < blockNum; k++) {
         for (i = 0; i < partBlock ; i++) {
-            for (s = 0; s < nBlockWidth; s++) {
-	        p1[s] = i + k * blockNum;
-            }	
-            outVecs = _mm256_loadu_ps((float*)p1);  
+            /*for (s = 0; s < nBlockWidth; s++) {
+	        p1[s] = i + k * partBlock;
+            }*/	
+            //outVecs = _mm256_loadu_ps((float*)p1);  
+            int tmp = i + k * partBlock;
+            outVecs = _mm256_set1_ps(*((float*)(&tmp)));
             p2 = data;
             for (j = 0; j < cntBlock; j++) {
                 innerVecs = _mm256_loadu_ps((float*)p2);
@@ -132,7 +134,7 @@ void test(int *data, int *vector, int n, int vec_len) /* The test function */
 	        p2 += nBlockWidth * 4;
             }
             for (r = 0; r < cntRem; r++) {
-                if ((i + k * blockNum) == *p2)
+                if ((i + k * partBlock) == *p2)
 	            result++;
 	        p2++;
             }
@@ -141,7 +143,7 @@ void test(int *data, int *vector, int n, int vec_len) /* The test function */
 
     for (i = 0; i < remNum; i++) {
             for (s = 0; s < nBlockWidth; s++) {
-	        p1[s] = i + k * blockNum;
+	        p1[s] = i + k * partBlock;
             }	
             outVecs = _mm256_loadu_ps((float*)p1);  
             p2 = data;
@@ -169,13 +171,13 @@ void test(int *data, int *vector, int n, int vec_len) /* The test function */
 	    p2 += nBlockWidth * 4;
         }
         for (r = 0; r < cntRem; r++) {
-            if ((i + k * blockNum) == *p2)
+            if ((i + k * partBlock) == *p2)
                 result++;
             p2++;
         }
     }
     sink = result; /* So compiler doesn't optimize away the loop */
-//  printf("[%ld]",sink);
+  printf("[%ld]",sink);
 }
 
 long run(int *data, int *vector, int n, int vec_len)

@@ -96,10 +96,11 @@ void test(int *data, int *vector, int n, int vec_len) /* The test function */
     __m256 outVecs, innerVecs;
     __m256 cmpRst;	
     for (i = 0; i < vec_len; i++) {
-        for (k = 0; k < nBlockWidth; k++) {
+        /*for (k = 0; k < nBlockWidth; k++) {
 	    p1[k] = i;
-	}	
-	outVecs = _mm256_loadu_ps((float*)p1);	
+	}*/	
+	//outVecs = _mm256_loadu_ps((float*)p1);	
+        outVecs = _mm256_set1_ps(*((float*)(&i)));
 	p2 = data;
 	for (j = 0; j < cntBlock; j++) {
 	    innerVecs = _mm256_loadu_ps((float*)p2);
